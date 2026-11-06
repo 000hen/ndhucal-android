@@ -1,11 +1,6 @@
 package one.muisnowdevs.apps.ndhucalendar.ui.screen
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,9 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.EventBusy
-import androidx.compose.material.icons.rounded.Today
 import androidx.compose.material3.Button
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +29,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -64,6 +59,32 @@ import java.time.LocalDate
 
 private typealias Section = Pair<LocalDate, List<CalendarEntry>>
 
+/**
+ * The schedule's scroll position, hoisted so a control outside the screen, such as the Scaffold's
+ * FAB, can tell when today is off screen and bring it back.
+ */
+@Stable
+class ScheduleScrollState internal constructor(internal val list: LazyListState) {
+    /** Where the now line sits in the list; null while no schedule is showing. */
+    internal var nowLineIndex by mutableStateOf<Int?>(null)
+
+    val isTodayOffScreen by derivedStateOf {
+        val layout = list.layoutInfo
+        nowLineIndex != null && layout.totalItemsCount > 0 &&
+                layout.visibleItemsInfo.none { it.key == NowLineKey }
+    }
+
+    suspend fun scrollToToday() {
+        nowLineIndex?.let { list.animateScrollToItem(it) }
+    }
+}
+
+@Composable
+fun rememberScheduleScrollState(): ScheduleScrollState {
+    val list = rememberLazyListState()
+    return remember(list) { ScheduleScrollState(list) }
+}
+
 private sealed interface ScheduleContent {
     data object Loading : ScheduleContent
     data class Schedule(val sections: List<Section>) : ScheduleContent
@@ -84,7 +105,8 @@ fun CalendarScreen(
     viewModel: CalendarViewModel,
     showFavoritesOnly: Boolean,
     selectedCategories: Set<Category>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    scrollState: ScheduleScrollState = rememberScheduleScrollState()
 ) {
     val entries by viewModel.entries.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -131,6 +153,7 @@ fun CalendarScreen(
                 is ScheduleContent.Failed -> LoadError(target.error, onRetry = viewModel::reload)
                 is ScheduleContent.Schedule -> CalendarList(
                     sections = target.sections,
+                    scrollState = scrollState,
                     today = today,
                     favoriteKeys = favoriteKeys,
                     onFavoriteChange = favorites::setFavorite,
@@ -150,6 +173,7 @@ fun CalendarScreen(
 @Composable
 private fun CalendarList(
     sections: List<Section>,
+    scrollState: ScheduleScrollState,
     today: LocalDate,
     favoriteKeys: Set<String>,
     onFavoriteChange: (key: String, favorite: Boolean) -> Unit,
@@ -157,18 +181,16 @@ private fun CalendarList(
     scrollToTodayKey: Any,
     modifier: Modifier = Modifier
 ) {
-    val state = rememberLazyListState()
+    val state = scrollState.list
     val scope = rememberCoroutineScope()
 
     // The sections from this one on are today or later; the line sits just above it.
     val firstUpcoming = sections.indexOfFirst { (date, _) -> date >= today }
         .let { if (it == -1) sections.size else it }
     val nowLineIndex = sections.take(firstUpcoming).sumOf { (_, entries) -> 1 + entries.size }
-    val isNowLineOffScreen by remember {
-        derivedStateOf {
-            val layout = state.layoutInfo
-            layout.totalItemsCount > 0 && layout.visibleItemsInfo.none { it.key == NowLineKey }
-        }
+    DisposableEffect(scrollState, nowLineIndex) {
+        scrollState.nowLineIndex = nowLineIndex
+        onDispose { scrollState.nowLineIndex = null }
     }
 
     // Opens on the now line, once per load rather than on every filter change,
@@ -181,65 +203,50 @@ private fun CalendarList(
         scrolledFor = loadId
     }
 
-    Box(modifier.fillMaxSize()) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            state = state,
-            contentPadding = PaddingValues(bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            for ((index, section) in sections.withIndex()) {
-                val (date, sectionEntries) = section
-                if (index == firstUpcoming) item(key = NowLineKey) { NowLine(Modifier.animateItem()) }
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        state = state,
+        contentPadding = PaddingValues(bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        for ((index, section) in sections.withIndex()) {
+            val (date, sectionEntries) = section
+            if (index == firstUpcoming) item(key = NowLineKey) { NowLine(Modifier.animateItem()) }
 
-                stickyHeader(key = "header-$date") { headerIndex ->
-                    val isFloating by isHeaderFloating(state, headerIndex)
+            stickyHeader(key = "header-$date") { headerIndex ->
+                val isFloating by isHeaderFloating(state, headerIndex)
 
-                    DateHeader(
-                        date = date,
+                DateHeader(
+                    date = date,
+                    today = today,
+                    isFloating = isFloating,
+                    onClick = { scope.launch { state.animateScrollToItem(headerIndex) } },
+                    modifier = Modifier.animateItem()
+                )
+            }
+
+            items(sectionEntries, key = { "$date/${it.key}" }) { entry ->
+                val isFavorite = entry.key in favoriteKeys
+
+                SwipeToFavoriteBox(
+                    isFavorite = isFavorite,
+                    onFavoriteChange = { onFavoriteChange(entry.key, it) },
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp)
+                        .animateItem()
+                ) {
+                    EventCard(
+                        entry = entry,
+                        day = date,
                         today = today,
-                        isFloating = isFloating,
-                        onClick = { scope.launch { state.animateScrollToItem(headerIndex) } },
-                        modifier = Modifier.animateItem()
+                        isFavorite = isFavorite,
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onEntryClick(entry) }
                     )
                 }
-
-                items(sectionEntries, key = { "$date/${it.key}" }) { entry ->
-                    val isFavorite = entry.key in favoriteKeys
-
-                    SwipeToFavoriteBox(
-                        isFavorite = isFavorite,
-                        onFavoriteChange = { onFavoriteChange(entry.key, it) },
-                        modifier = Modifier
-                            .padding(horizontal = 8.dp)
-                            .animateItem()
-                    ) {
-                        EventCard(
-                            entry = entry,
-                            day = date,
-                            today = today,
-                            isFavorite = isFavorite,
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { onEntryClick(entry) }
-                        )
-                    }
-                }
-            }
-            if (firstUpcoming == sections.size) item(key = NowLineKey) { NowLine(Modifier.animateItem()) }
-        }
-
-        AnimatedVisibility(
-            visible = isNowLineOffScreen,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp),
-            enter = scaleIn() + fadeIn(),
-            exit = scaleOut() + fadeOut()
-        ) {
-            FloatingActionButton(onClick = { scope.launch { state.animateScrollToItem(nowLineIndex) } }) {
-                Icon(Icons.Rounded.Today, contentDescription = "回到今天")
             }
         }
+        if (firstUpcoming == sections.size) item(key = NowLineKey) { NowLine(Modifier.animateItem()) }
     }
 }
 
