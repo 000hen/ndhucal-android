@@ -3,6 +3,23 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val releaseSigningVariables = listOf(
+    "RELEASE_KEYSTORE_FILE",
+    "RELEASE_STORE_PASSWORD",
+    "RELEASE_KEY_ALIAS",
+    "RELEASE_KEY_PASSWORD",
+)
+val configuredReleaseSigningValues = releaseSigningVariables
+    .associateWith { providers.environmentVariable(it).orNull }
+    .filterValues { !it.isNullOrBlank() }
+val buildPerAbiApks =
+    providers.gradleProperty("releasePerAbi").map { it.toBoolean() }.getOrElse(false)
+
+// A partial configuration must not quietly turn an intended signed release into an unsigned one.
+require(configuredReleaseSigningValues.isEmpty() || configuredReleaseSigningValues.size == releaseSigningVariables.size) {
+    "Release signing requires all of: ${releaseSigningVariables.joinToString()}"
+}
+
 android {
     namespace = "one.muisnowdevs.apps.ndhucalendar"
     compileSdk {
@@ -21,14 +38,39 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    val releaseSigningConfig = if (configuredReleaseSigningValues.isNotEmpty()) {
+        signingConfigs.create("release") {
+            storeFile = file(configuredReleaseSigningValues.getValue("RELEASE_KEYSTORE_FILE")!!)
+            storePassword = configuredReleaseSigningValues.getValue("RELEASE_STORE_PASSWORD")
+            keyAlias = configuredReleaseSigningValues.getValue("RELEASE_KEY_ALIAS")
+            keyPassword = configuredReleaseSigningValues.getValue("RELEASE_KEY_PASSWORD")
+        }
+    } else {
+        null
+    }
+
     buildTypes {
         release {
+            signingConfig = releaseSigningConfig
             optimization {
                 enable = true
                 isMinifyEnabled = true
                 isShrinkResources = true
             }
         }
+    }
+    splits {
+        abi {
+            // Opt-in so ordinary builds keep their conventional single APK.
+            isEnable = buildPerAbiApks
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            isUniversalApk = false
+        }
+    }
+    packaging {
+        // JNA also ships obsolete ABIs for which this app has no Rust library.
+        jniLibs.excludes += setOf("lib/armeabi/**", "lib/mips/**", "lib/mips64/**")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
