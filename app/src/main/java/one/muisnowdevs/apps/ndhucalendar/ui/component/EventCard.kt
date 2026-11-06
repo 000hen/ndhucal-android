@@ -87,6 +87,8 @@ fun EventCard(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                AnimatedVisibility(visible = isFavorite) { FavoriteTag() }
+
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -98,7 +100,6 @@ fun EventCard(
                         else MaterialTheme.colorScheme.primary
                     )
                     if (entry.isImportant) ImportantIcon()
-                    AnimatedVisibility(visible = isFavorite) { FavoriteTag() }
                 }
 
                 Text(
