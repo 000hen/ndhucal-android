@@ -1,6 +1,11 @@
 package one.muisnowdevs.apps.ndhucalendar.ui.screen
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +26,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.EventBusy
+import androidx.compose.material.icons.rounded.Today
 import androidx.compose.material3.Button
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -156,6 +163,13 @@ private fun CalendarList(
     // The sections from this one on are today or later; the line sits just above it.
     val firstUpcoming = sections.indexOfFirst { (date, _) -> date >= today }
         .let { if (it == -1) sections.size else it }
+    val nowLineIndex = sections.take(firstUpcoming).sumOf { (_, entries) -> 1 + entries.size }
+    val isNowLineOffScreen by remember {
+        derivedStateOf {
+            val layout = state.layoutInfo
+            layout.totalItemsCount > 0 && layout.visibleItemsInfo.none { it.key == NowLineKey }
+        }
+    }
 
     // Opens on the now line, once per load rather than on every filter change,
     // so toggling a filter does not yank the list away from where the reader was.
@@ -163,56 +177,73 @@ private fun CalendarList(
     LaunchedEffect(scrollToTodayKey) {
         val loadId = scrollToTodayKey.hashCode()
         if (sections.isEmpty() || scrolledFor == loadId) return@LaunchedEffect
-        state.scrollToItem(sections.take(firstUpcoming).sumOf { (_, entries) -> 1 + entries.size })
+        state.scrollToItem(nowLineIndex)
         scrolledFor = loadId
     }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        state = state,
-        contentPadding = PaddingValues(bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        for ((index, section) in sections.withIndex()) {
-            val (date, sectionEntries) = section
-            if (index == firstUpcoming) item(key = "now-line") { NowLine(Modifier.animateItem()) }
+    Box(modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            state = state,
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            for ((index, section) in sections.withIndex()) {
+                val (date, sectionEntries) = section
+                if (index == firstUpcoming) item(key = NowLineKey) { NowLine(Modifier.animateItem()) }
 
-            stickyHeader(key = "header-$date") { headerIndex ->
-                val isFloating by isHeaderFloating(state, headerIndex)
+                stickyHeader(key = "header-$date") { headerIndex ->
+                    val isFloating by isHeaderFloating(state, headerIndex)
 
-                DateHeader(
-                    date = date,
-                    today = today,
-                    isFloating = isFloating,
-                    onClick = { scope.launch { state.animateScrollToItem(headerIndex) } },
-                    modifier = Modifier.animateItem()
-                )
-            }
-
-            items(sectionEntries, key = { "$date/${it.key}" }) { entry ->
-                val isFavorite = entry.key in favoriteKeys
-
-                SwipeToFavoriteBox(
-                    isFavorite = isFavorite,
-                    onFavoriteChange = { onFavoriteChange(entry.key, it) },
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp)
-                        .animateItem()
-                ) {
-                    EventCard(
-                        entry = entry,
-                        day = date,
+                    DateHeader(
+                        date = date,
                         today = today,
-                        isFavorite = isFavorite,
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { onEntryClick(entry) }
+                        isFloating = isFloating,
+                        onClick = { scope.launch { state.animateScrollToItem(headerIndex) } },
+                        modifier = Modifier.animateItem()
                     )
                 }
+
+                items(sectionEntries, key = { "$date/${it.key}" }) { entry ->
+                    val isFavorite = entry.key in favoriteKeys
+
+                    SwipeToFavoriteBox(
+                        isFavorite = isFavorite,
+                        onFavoriteChange = { onFavoriteChange(entry.key, it) },
+                        modifier = Modifier
+                            .padding(horizontal = 8.dp)
+                            .animateItem()
+                    ) {
+                        EventCard(
+                            entry = entry,
+                            day = date,
+                            today = today,
+                            isFavorite = isFavorite,
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { onEntryClick(entry) }
+                        )
+                    }
+                }
+            }
+            if (firstUpcoming == sections.size) item(key = NowLineKey) { NowLine(Modifier.animateItem()) }
+        }
+
+        AnimatedVisibility(
+            visible = isNowLineOffScreen,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            enter = scaleIn() + fadeIn(),
+            exit = scaleOut() + fadeOut()
+        ) {
+            FloatingActionButton(onClick = { scope.launch { state.animateScrollToItem(nowLineIndex) } }) {
+                Icon(Icons.Rounded.Today, contentDescription = "回到今天")
             }
         }
-        if (firstUpcoming == sections.size) item(key = "now-line") { NowLine(Modifier.animateItem()) }
     }
 }
+
+private const val NowLineKey = "now-line"
 
 /** Marks where the past ends and today begins. */
 @Composable
