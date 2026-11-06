@@ -1,6 +1,7 @@
 package one.muisnowdevs.apps.ndhucalendar.ui.screen
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,11 +16,13 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Error
 import androidx.compose.material.icons.rounded.EventBusy
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -150,13 +153,17 @@ private fun CalendarList(
     val state = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    // Opens on the first date from today on, once per load rather than on every filter change,
+    // The sections from this one on are today or later; the line sits just above it.
+    val firstUpcoming = sections.indexOfFirst { (date, _) -> date >= today }
+        .let { if (it == -1) sections.size else it }
+
+    // Opens on the now line, once per load rather than on every filter change,
     // so toggling a filter does not yank the list away from where the reader was.
     var scrolledFor by rememberSaveable { mutableStateOf<Int?>(null) }
     LaunchedEffect(scrollToTodayKey) {
         val loadId = scrollToTodayKey.hashCode()
         if (sections.isEmpty() || scrolledFor == loadId) return@LaunchedEffect
-        state.scrollToItem(indexOfFirstSectionFrom(sections, today))
+        state.scrollToItem(sections.take(firstUpcoming).sumOf { (_, entries) -> 1 + entries.size })
         scrolledFor = loadId
     }
 
@@ -166,7 +173,10 @@ private fun CalendarList(
         contentPadding = PaddingValues(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        for ((date, sectionEntries) in sections) {
+        for ((index, section) in sections.withIndex()) {
+            val (date, sectionEntries) = section
+            if (index == firstUpcoming) item(key = "now-line") { NowLine(Modifier.animateItem()) }
+
             stickyHeader(key = "header-$date") { headerIndex ->
                 val isFloating by isHeaderFloating(state, headerIndex)
 
@@ -200,6 +210,24 @@ private fun CalendarList(
                 }
             }
         }
+        if (firstUpcoming == sections.size) item(key = "now-line") { NowLine(Modifier.animateItem()) }
+    }
+}
+
+/** Marks where the past ends and today begins. */
+@Composable
+private fun NowLine(modifier: Modifier = Modifier) {
+    val color = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .background(color, CircleShape)
+        )
+        HorizontalDivider(thickness = 2.dp, color = color)
     }
 }
 
@@ -226,18 +254,6 @@ private fun scheduleByDay(entries: List<CalendarEntry>): List<Section> {
         } while (day <= entry.end)
     }
     return byDay.map { (day, dayEntries) -> day to dayEntries.sortedBy { it.start != day } }
-}
-
-/** Lazy-list index of the first header dated today or later, or of the last one if all are past. */
-private fun indexOfFirstSectionFrom(sections: List<Section>, today: LocalDate): Int {
-    var index = 0
-    var lastHeader = 0
-    for ((date, entries) in sections) {
-        if (date >= today) return index
-        lastHeader = index
-        index += 1 + entries.size
-    }
-    return lastHeader
 }
 
 /** Stands in for the list when the calendar will not load; the exception sits behind a sheet. */
