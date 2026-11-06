@@ -1,6 +1,8 @@
 package one.muisnowdevs.apps.ndhucalendar.ui.screen
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -52,9 +54,17 @@ import java.time.LocalDate
 
 private typealias Section = Pair<LocalDate, List<CalendarEntry>>
 
+private sealed interface ScheduleContent {
+    data object Loading : ScheduleContent
+    data class Schedule(val sections: List<Section>) : ScheduleContent
+    data object NoMatch : ScheduleContent
+    data class Failed(val error: Throwable) : ScheduleContent
+}
+
 /**
- * The school calendar grouped under one sticky header per start date. Pull to refresh, tap a row
- * for its details, swipe it to star it.
+ * The school calendar as a day-by-day schedule: one sticky header per day with something on, and
+ * an event spanning several days repeated under each of them. Pull to refresh, tap a row for its
+ * details, swipe it to star it.
  *
  * The filters are the caller's, since the controls that change them sit in the app bar.
  * An empty [selectedCategories] means every category.
@@ -81,9 +91,14 @@ fun CalendarScreen(
         entries
             .filter { !showFavoritesOnly || it.key in favoriteKeys }
             .filter { selectedCategories.isEmpty() || it.category in selectedCategories }
-            .groupBy { it.start }
-            .toSortedMap()
-            .toList()
+            .let(::scheduleByDay)
+    }
+
+    val content = when {
+        entries.isNotEmpty() ->
+            if (sections.isEmpty()) ScheduleContent.NoMatch else ScheduleContent.Schedule(sections)
+        // A failed refresh keeps the list it already had; only an empty one gives way.
+        else -> error?.let(ScheduleContent::Failed) ?: ScheduleContent.Loading
     }
 
     var detailedKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -93,18 +108,26 @@ fun CalendarScreen(
         onRefresh = viewModel::reload,
         modifier = modifier
     ) {
-        when {
-            // A failed refresh keeps the list it already had; only an empty one gives way.
-            error != null && entries.isEmpty() -> LoadError(error, onRetry = viewModel::reload)
-            entries.isNotEmpty() && sections.isEmpty() -> EmptyResult()
-            else -> CalendarList(
-                sections = sections,
-                today = today,
-                favoriteKeys = favoriteKeys,
-                onFavoriteChange = favorites::setFavorite,
-                onEntryClick = { detailedKey = it.key },
-                scrollToTodayKey = entries
-            )
+        // Keyed by kind, so the outgoing state keeps drawing its own data while it fades out.
+        AnimatedContent(
+            targetState = content,
+            modifier = Modifier.fillMaxSize(),
+            contentKey = { it::class },
+            label = "schedule content"
+        ) { target ->
+            when (target) {
+                ScheduleContent.Loading -> Box(Modifier.fillMaxSize())
+                ScheduleContent.NoMatch -> EmptyResult()
+                is ScheduleContent.Failed -> LoadError(target.error, onRetry = viewModel::reload)
+                is ScheduleContent.Schedule -> CalendarList(
+                    sections = target.sections,
+                    today = today,
+                    favoriteKeys = favoriteKeys,
+                    onFavoriteChange = favorites::setFavorite,
+                    onEntryClick = { detailedKey = it.key },
+                    scrollToTodayKey = entries
+                )
+            }
         }
     }
 
@@ -156,7 +179,7 @@ private fun CalendarList(
                 )
             }
 
-            items(sectionEntries, key = { it.key }) { entry ->
+            items(sectionEntries, key = { "$date/${it.key}" }) { entry ->
                 val isFavorite = entry.key in favoriteKeys
 
                 SwipeToFavoriteBox(
@@ -168,6 +191,7 @@ private fun CalendarList(
                 ) {
                     EventCard(
                         entry = entry,
+                        day = date,
                         today = today,
                         isFavorite = isFavorite,
                         modifier = Modifier.fillMaxWidth(),
@@ -187,6 +211,23 @@ private fun isHeaderFloating(state: LazyListState, headerIndex: Int) = remember(
     }
 }
 
+/**
+ * Every day with something on, each listing the events it falls within: those starting that day
+ * first, then those carried over from earlier days.
+ */
+private fun scheduleByDay(entries: List<CalendarEntry>): List<Section> {
+    val byDay = sortedMapOf<LocalDate, MutableList<CalendarEntry>>()
+    for (entry in entries) {
+        // do-while so an entry whose end comes before its start still shows on its start day.
+        var day = entry.start
+        do {
+            byDay.getOrPut(day) { mutableListOf() }.add(entry)
+            day = day.plusDays(1)
+        } while (day <= entry.end)
+    }
+    return byDay.map { (day, dayEntries) -> day to dayEntries.sortedBy { it.start != day } }
+}
+
 /** Lazy-list index of the first header dated today or later, or of the last one if all are past. */
 private fun indexOfFirstSectionFrom(sections: List<Section>, today: LocalDate): Int {
     var index = 0
@@ -201,7 +242,7 @@ private fun indexOfFirstSectionFrom(sections: List<Section>, today: LocalDate): 
 
 /** Stands in for the list when the calendar will not load; the exception sits behind a sheet. */
 @Composable
-private fun LoadError(error: Throwable?, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+private fun LoadError(error: Throwable, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     var isDetailOpen by rememberSaveable { mutableStateOf(false) }
 
     // Scrollable so the pull-to-refresh gesture still reaches the box underneath.
@@ -233,13 +274,11 @@ private fun LoadError(error: Throwable?, onRetry: () -> Unit, modifier: Modifier
             verticalAlignment = Alignment.CenterVertically
         ) {
             Button(onClick = onRetry) { Text("重試") }
-            if (error != null) {
-                TextButton(onClick = { isDetailOpen = true }) { Text("詳細資訊") }
-            }
+            TextButton(onClick = { isDetailOpen = true }) { Text("詳細資訊") }
         }
     }
 
-    if (isDetailOpen && error != null) {
+    if (isDetailOpen) {
         ErrorDetailSheet(error) { isDetailOpen = false }
     }
 }

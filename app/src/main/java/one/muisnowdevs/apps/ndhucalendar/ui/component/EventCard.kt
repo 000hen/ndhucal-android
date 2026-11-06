@@ -31,12 +31,14 @@ import one.muisnowdevs.apps.ndhucalendar.model.isDayOff
 import one.muisnowdevs.apps.ndhucalendar.ui.theme.FavoriteStar
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 private val ShortDate = DateTimeFormatter.ofPattern("M/d（E）", Locale.TRADITIONAL_CHINESE)
 
 /**
- * A calendar row: category badge, dates and title. Starring is the caller's swipe and the details
+ * A calendar row as listed under [day]: category badge, dates and title, plus which of its days
+ * [day] is when the event spans several. Starring is the caller's swipe and the details
  * are the caller's sheet; the card only shows the star as a tag beside the date.
  *
  * Days off take the tertiary container colour and ongoing events the secondary one; ended ones of
@@ -45,6 +47,7 @@ private val ShortDate = DateTimeFormatter.ofPattern("M/d（E）", Locale.TRADITI
 @Composable
 fun EventCard(
     entry: CalendarEntry,
+    day: LocalDate,
     today: LocalDate,
     isFavorite: Boolean,
     modifier: Modifier = Modifier,
@@ -67,6 +70,13 @@ fun EventCard(
         if (entry.dayCount == 1L) ShortDate.format(entry.start)
         else "${ShortDate.format(entry.start)} – ${ShortDate.format(entry.end)}"
     }
+    val dayOfText = remember(entry, day) {
+        if (entry.dayCount == 1L) null
+        else "第 ${ChronoUnit.DAYS.between(entry.start, day) + 1}/${entry.dayCount} 天"
+    }
+    val dateColor =
+        if (isHighlightedDayOff) MaterialTheme.colorScheme.onTertiaryContainer
+        else MaterialTheme.colorScheme.primary
 
     Card(
         onClick = onClick,
@@ -96,10 +106,17 @@ fun EventCard(
                     Text(
                         text = dateText,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (isHighlightedDayOff) MaterialTheme.colorScheme.onTertiaryContainer
-                        else MaterialTheme.colorScheme.primary
+                        color = dateColor
                     )
                     if (entry.isImportant) ImportantIcon()
+                }
+
+                if (dayOfText != null) {
+                    Text(
+                        text = dayOfText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
                 }
 
                 Text(
