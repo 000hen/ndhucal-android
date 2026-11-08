@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import one.muisnowdevs.apps.ndhucalendar.model.CalendarEntry
 import one.muisnowdevs.apps.ndhucalendar.model.EventStatus
@@ -145,7 +146,7 @@ fun CategoryBadge(entry: CalendarEntry, modifier: Modifier = Modifier) {
     ) {
         Icon(
             entry.category.icon,
-            contentDescription = entry.categoryName,
+            contentDescription = stringResource(entry.category.nameRes),
             tint = contentColor,
             modifier = Modifier.size(28.dp)
         )

@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +37,7 @@ import one.muisnowdevs.apps.ndhucalendar.model.statusText
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import uniffi.ndhucal.Subcategory
 
 private val FullDate = DateTimeFormatter.ofPattern("y/M/d（E）", Locale.TRADITIONAL_CHINESE)
 
@@ -73,8 +75,10 @@ fun EventDetailSheet(entry: CalendarEntry, today: LocalDate, onDismissRequest: (
 
             HorizontalDivider()
 
-            DetailRow(entry.category.icon, "分類", entry.categoryName)
-            entry.subcategoryName?.let { DetailRow(Icons.AutoMirrored.Rounded.Label, "類型", it) }
+            DetailRow(entry.category.icon, "分類", stringResource(entry.category.nameRes))
+            entry.subcategory.takeIf { it != Subcategory.OTHER }?.let {
+                DetailRow(Icons.AutoMirrored.Rounded.Label, "類型", stringResource(it.nameRes))
+            }
             DetailRow(Icons.Rounded.DateRange, "日期", rangeText)
             DetailRow(Icons.Rounded.Timelapse, "天數", "共 ${entry.dayCount} 天")
             DetailRow(Icons.Rounded.Schedule, "狀態", statusText(entry, today))

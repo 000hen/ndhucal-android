@@ -58,9 +58,9 @@ class MainActivity : ComponentActivity() {
                 val viewModel: CalendarViewModel = viewModel()
                 val entries by viewModel.entries.collectAsState()
 
-                // Only categories the calendar actually uses, named once per load.
+                // Only categories the calendar actually uses.
                 val categories = remember(entries) {
-                    entries.map { it.category to it.categoryName }.distinct().sortedBy { it.first }
+                    entries.map { it.category }.distinct().sorted()
                 }
 
                 Scaffold(

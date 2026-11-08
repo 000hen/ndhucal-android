@@ -20,6 +20,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -29,18 +30,16 @@ import uniffi.ndhucal.Category
  * Picks which categories the list shows, two to a row like the other pickers: filled when
  * selected, outlined when not. An empty [selected] set means every category, which is what the
  * leading 全部 option stands for.
- *
- * [categories] pairs each category with its display name, in the order they are laid out.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategoryFilterSheet(
-    categories: List<Pair<Category, String>>,
+    categories: List<Category>,
     selected: Set<Category>,
     onSelectedChange: (Set<Category>) -> Unit,
     onDismissRequest: () -> Unit
 ) {
-    val options: List<Pair<Category?, String>> = listOf(null to "全部") + categories
+    val options: List<Category?> = listOf(null) + categories
 
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -54,12 +53,12 @@ fun CategoryFilterSheet(
         ) {
             for (pair in options.chunked(2)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for ((category, name) in pair) {
+                    for (category in pair) {
                         val isSelected =
                             if (category == null) selected.isEmpty() else category in selected
 
                         FilterButton(
-                            text = name,
+                            text = category?.let { stringResource(it.nameRes) } ?: "全部",
                             icon = category?.icon ?: Icons.Rounded.SelectAll,
                             isSelected = isSelected,
                             onClick = {

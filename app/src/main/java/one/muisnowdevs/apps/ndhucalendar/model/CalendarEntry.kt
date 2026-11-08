@@ -21,8 +21,7 @@ data class CalendarEntry(
     val start: LocalDate,
     val end: LocalDate,
     val category: Category,
-    val categoryName: String,
-    val subcategoryName: String?,
+    val subcategory: Subcategory,
     val isImportant: Boolean,
     val source: String,
 ) {
@@ -50,8 +49,7 @@ fun Event.toEntry(): CalendarEntry {
         start = startDate,
         end = endDate,
         category = category,
-        categoryName = category.zhName(),
-        subcategoryName = subcategory.takeIf { it != Subcategory.OTHER }?.zhName(),
+        subcategory = subcategory,
         isImportant = subcategory.isImportant(),
         source = source,
     )

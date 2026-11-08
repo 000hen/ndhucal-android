@@ -756,10 +756,6 @@ internal object UniffiLib {
         `ptr`: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
 
-    external fun uniffi_ndhucal_fn_method_category_zh_name(
-        `ptr`: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
     external fun uniffi_ndhucal_fn_method_subcategory_category(
         `ptr`: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
@@ -769,10 +765,6 @@ internal object UniffiLib {
     ): Byte
 
     external fun uniffi_ndhucal_fn_method_subcategory_label(
-        `ptr`: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
-    ): RustBuffer.ByValue
-
-    external fun uniffi_ndhucal_fn_method_subcategory_zh_name(
         `ptr`: RustBuffer.ByValue, uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
 
@@ -1368,21 +1360,6 @@ enum class Category {
     }
 
 
-    /**
-     * Short Traditional-Chinese name.
-     */
-    fun `zhName`(): kotlin.String {
-        return FfiConverterString.lift(
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_ndhucal_fn_method_category_zh_name(
-                    FfiConverterTypeCategory.lower(this),
-                    _status
-                )
-            }
-        )
-    }
-
-
     companion object
 }
 
@@ -1569,21 +1546,6 @@ enum class Subcategory {
         return FfiConverterString.lift(
             uniffiRustCall() { _status ->
                 UniffiLib.uniffi_ndhucal_fn_method_subcategory_label(
-                    FfiConverterTypeSubcategory.lower(this),
-                    _status
-                )
-            }
-        )
-    }
-
-
-    /**
-     * Short Traditional-Chinese name.
-     */
-    fun `zhName`(): kotlin.String {
-        return FfiConverterString.lift(
-            uniffiRustCall() { _status ->
-                UniffiLib.uniffi_ndhucal_fn_method_subcategory_zh_name(
                     FfiConverterTypeSubcategory.lower(this),
                     _status
                 )
